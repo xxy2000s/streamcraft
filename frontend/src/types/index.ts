@@ -19,6 +19,7 @@ export interface Collection {
   cover_image?: string
   content_type: ContentType
   category?: string
+  category_id?: number
   tags?: string[]
   collected_at: string
   created_at: string
@@ -28,6 +29,7 @@ export interface Collection {
 
 export interface Category {
   id: number
+  user_id: number
   name: string
   description?: string
   color?: string

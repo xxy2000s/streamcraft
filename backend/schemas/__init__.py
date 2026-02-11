@@ -43,7 +43,8 @@ class CollectionBase(BaseModel):
     author: Optional[str] = None
     cover_image: Optional[str] = None
     content_type: ContentTypeEnum = ContentTypeEnum.POST
-    category: Optional[str] = None
+    category: Optional[str] = None  # AI分类结果（保留）
+    category_id: Optional[int] = None  # 用户选择的分类
     tags: Optional[List[str]] = None
 
 class CollectionCreate(CollectionBase):
@@ -53,6 +54,7 @@ class CollectionUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
     category: Optional[str] = None
+    category_id: Optional[int] = None
     tags: Optional[List[str]] = None
 
 class Collection(CollectionBase):
@@ -62,7 +64,7 @@ class Collection(CollectionBase):
     created_at: datetime
     updated_at: datetime
     like_count: int = 0
-    
+
     class Config:
         from_attributes = True
 
@@ -75,10 +77,16 @@ class CategoryBase(BaseModel):
 class CategoryCreate(CategoryBase):
     pass
 
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+
 class Category(CategoryBase):
     id: int
+    user_id: int
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -115,10 +123,12 @@ class HotContent(HotContentBase):
         from_attributes = True
 
 # 通用响应
+from typing import Any
+
 class SuccessResponse(BaseModel):
     success: bool = True
     message: str
-    data: Optional[dict] = None
+    data: Optional[Any] = None
 
 class ErrorResponse(BaseModel):
     success: bool = False

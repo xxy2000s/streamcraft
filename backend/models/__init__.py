@@ -45,7 +45,8 @@ class Collection(Base):
     author = Column(String(100))
     cover_image = Column(String(500))
     content_type = Column(Enum(ContentTypeEnum), default=ContentTypeEnum.POST)
-    category = Column(String(50))  # AI分类结果
+    category = Column(String(50))  # AI分类结果（保留兼容性）
+    category_id = Column(Integer, ForeignKey("categories.id"))  # 用户选择的分类
     tags = Column(Text)  # JSON格式存储标签
     collected_at = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -54,6 +55,7 @@ class Collection(Base):
     # 关系
     user = relationship("User", back_populates="collections")
     likes = relationship("Like", back_populates="collection")
+    category_ref = relationship("Category")  # 用户分类关联
 
 class Like(Base):
     __tablename__ = "likes"
@@ -71,10 +73,14 @@ class Category(Base):
     __tablename__ = "categories"
     
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(50), unique=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # 添加用户关联
+    name = Column(String(50), nullable=False)  # 移除 unique，用户可以有同名分类
     description = Column(Text)
     color = Column(String(7))  # HEX颜色值
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # 关系
+    user = relationship("User")
 
 class Tag(Base):
     __tablename__ = "tags"

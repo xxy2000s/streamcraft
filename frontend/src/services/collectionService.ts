@@ -6,6 +6,7 @@ export interface CollectionQueryParams {
   limit?: number
   platform?: string
   category?: string
+  category_id?: number
 }
 
 export class CollectionService {
@@ -39,5 +40,10 @@ export class CollectionService {
 
   static async unlikeCollection(id: number): Promise<void> {
     await apiClient.delete(`/collections/${id}/like`)
+  }
+
+  static async parseUrl(url: string): Promise<any> {
+    const response = await apiClient.post('/collections/parse-url', { url })
+    return response.data.data
   }
 }

@@ -1,18 +1,21 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Menu, X, User, LogOut, Home, Bookmark, TrendingUp, Bot } from 'lucide-react'
+import { Menu, X, User, LogOut, Home, Bookmark, TrendingUp, Bot, FolderOpen } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
   const { user, isAuthenticated, logout } = useAuthStore()
+  const userMenuRef = useRef<HTMLDivElement>(null)
 
   const navItems = [
     { name: '首页', path: '/', icon: Home },
     { name: '我的收藏', path: '/collections', icon: Bookmark },
+    { name: '分类管理', path: '/categories', icon: FolderOpen },
     { name: '热门内容', path: '/hot', icon: TrendingUp },
     { name: '机器人助手', path: '/bot', icon: Bot },
   ]
@@ -24,7 +27,19 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const handleLogout = () => {
     logout()
     navigate('/')
+    setIsUserMenuOpen(false)
   }
+
+  // 点击外部关闭用户菜单
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -61,29 +76,43 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             {/* User Menu */}
             <div className="flex items-center space-x-4">
               {isAuthenticated ? (
-                <div className="relative">
-                  <div className="flex items-center space-x-3">
+                <div className="relative" ref={userMenuRef}>
+                  <button
+                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                    className="flex items-center space-x-3 hover:bg-gray-100 rounded-lg px-2 py-1 transition-colors"
+                  >
                     <span className="text-sm text-gray-700 hidden sm:block">{user?.username}</span>
                     <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
                       <User className="w-5 h-5 text-indigo-600" />
                     </div>
-                  </div>
-                  
+                  </button>
+
                   {/* Dropdown Menu */}
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 z-50 hidden group-hover:block">
-                    <Link
-                      to="/profile"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    >
-                      个人资料
-                    </Link>
-                    <button
-                      onClick={handleLogout}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    >
-                      退出登录
-                    </button>
-                  </div>
+                  <AnimatePresence>
+                    {isUserMenuOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 z-50 border border-gray-200"
+                      >
+                        <Link
+                          to="/profile"
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          onClick={() => setIsUserMenuOpen(false)}
+                        >
+                          个人资料
+                        </Link>
+                        <button
+                          onClick={handleLogout}
+                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        >
+                          退出登录
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               ) : (
                 <div className="flex items-center space-x-3">
