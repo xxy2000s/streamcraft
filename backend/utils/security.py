@@ -1,0 +1,42 @@
+from datetime import datetime, timedelta
+from typing import Optional
+from jose import JWTError, jwt
+import bcrypt
+from config.settings import settings
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """验证密码"""
+    # bcrypt 限制密码长度最多 72 字节
+    plain_password = plain_password[:72]
+    return bcrypt.checkpw(
+        plain_password.encode('utf-8'),
+        hashed_password.encode('utf-8')
+    )
+
+def get_password_hash(password: str) -> str:
+    """生成密码哈希"""
+    # bcrypt 限制密码长度最多 72 字节
+    password = password[:72]
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    """创建访问令牌"""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return encoded_jwt
+
+def decode_access_token(token: str):
+    """解码访问令牌"""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+        return username
+    except JWTError:
+        return None

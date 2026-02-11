@@ -1,0 +1,5 @@
+# requirements for production
+-r requirements.txt
+
+# Additional production requirements
+gunicorn==21.2.0
