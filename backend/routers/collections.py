@@ -61,11 +61,13 @@ def parse_xiaohongshu_url(url: str) -> dict:
     """解析小红书URL"""
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
             'Referer': 'https://www.xiaohongshu.com'
         }
         
-        response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
+        response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
         response.raise_for_status()
         
         # 提取标题 - 尝试多种方式
@@ -104,21 +106,24 @@ def parse_xiaohongshu_url(url: str) -> dict:
                 except:
                     desc = desc_match_text
         
-        # 提取封面图
+        # 提取封面图 - 增强版
         cover_image = ''
         image_patterns = [
             r'"cover":"([^"]+)"',
             r'"defaultCover":"([^"]+)"',
             r'"imageDefault":"([^"]+)"',
-            r'"key":"([^"]+)"',
+            r'"url":"([^"]+\\.(?:jpg|jpeg|png|gif|webp))"',
             r'<meta[^>]*property="og:image"[^>]*content="([^"]+)"',
-            r'<meta[^>]*property="twitter:image"[^>]*content="([^"]+)"'
+            r'<meta[^>]*property="twitter:image"[^>]*content="([^"]+)"',
+            r'https://[^"\'\\s,}]+xhslink[^"\'\\s,}]*',
+            r'https://[^"\'\\s,}]+sns[^"\'\\s,}]*',
         ]
         for pattern in image_patterns:
             if not cover_image:
-                image_match = re.search(pattern, response.text, re.IGNORECASE)
-                if image_match:
-                    cover_image = image_match.group(1)
+                matches = re.findall(pattern, response.text, re.IGNORECASE)
+                if matches:
+                    # 取第一个匹配项
+                    cover_image = matches[0]
                     break
         
         # 提取作者
@@ -158,17 +163,35 @@ def parse_xiaohongshu_url(url: str) -> dict:
             'content_type': content_type
         }
     except Exception as e:
-        return {'success': False}
+        # 即使解析失败，也返回基本平台信息
+        note_id = url.split('/')[-1]
+        note_id_match = re.search(r'/explore/([a-f0-9]+)', url)
+        if note_id_match:
+            note_id = note_id_match.group(1)
+        
+        return {
+            'success': True,
+            'platform': 'xiaohongshu',
+            'content_id': note_id,
+            'title': '',
+            'content': '',
+            'url': url,
+            'cover_image': '',
+            'author': '',
+            'content_type': 'post'
+        }
 
 def parse_douyin_url(url: str) -> dict:
     """解析抖音URL"""
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
             'Referer': 'https://www.douyin.com'
         }
         
-        response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
+        response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
         response.raise_for_status()
         
         # 辅助函数：解码 Unicode 转义字符
@@ -240,7 +263,7 @@ def parse_douyin_url(url: str) -> dict:
                 except:
                     desc = desc_match_text
         
-        # 提取封面图 - 尝试多种方式
+        # 提取封面图 - 增强版
         cover_image = ''
         image_patterns = [
             r'"cover":"([^"]+)"',
@@ -250,13 +273,16 @@ def parse_douyin_url(url: str) -> dict:
             r'"staticCover":"([^"]+)"',
             r'"videoCover":"([^"]+)"',
             r'<meta[^>]*property="og:image"[^>]*content="([^"]+)"',
-            r'<meta[^>]*property="twitter:image"[^>]*content="([^"]+)"'
+            r'<meta[^>]*property="twitter:image"[^>]*content="([^"]+)"',
+            r'https://[^"\'\\s,}]+aweme[^"\'\\s,}]*',
+            r'https://[^"\'\\s,}]+douyin[^"\'\\s,}]*',
         ]
         for pattern in image_patterns:
             if not cover_image:
-                image_match = re.search(pattern, response.text, re.IGNORECASE)
-                if image_match:
-                    cover_image = image_match.group(1)
+                matches = re.findall(pattern, response.text, re.IGNORECASE)
+                if matches:
+                    # 取第一个匹配项
+                    cover_image = matches[0]
                     break
         
         # 提取作者
@@ -287,7 +313,27 @@ def parse_douyin_url(url: str) -> dict:
             'content_type': 'video'
         }
     except Exception as e:
-        return {'success': False}
+        # 即使解析失败，也返回基本平台信息
+        video_id = url.split('/')[-1]
+        video_id_match = re.search(r'/video/(\d+)', url)
+        if video_id_match:
+            video_id = video_id_match.group(1)
+        else:
+            video_id_match = re.search(r'modal_id=(\d+)', url)
+            if video_id_match:
+                video_id = video_id_match.group(1)
+        
+        return {
+            'success': True,
+            'platform': 'douyin',
+            'content_id': video_id,
+            'title': '',
+            'content': '',
+            'url': url,
+            'cover_image': '',
+            'author': '',
+            'content_type': 'video'
+        }
 
 def parse_wechat_url(url: str) -> dict:
     """解析微信文章URL"""
@@ -338,7 +384,122 @@ def parse_wechat_url(url: str) -> dict:
             'content_type': 'post'
         }
     except Exception as e:
-        return {'success': False}
+        # 即使解析失败，也返回基本平台信息
+        article_id_match = re.search(r's\/([a-f0-9]+)', url)
+        article_id = article_id_match.group(1) if article_id_match else url.split('/')[-1]
+        
+        return {
+            'success': True,
+            'platform': 'wechat',
+            'content_id': article_id,
+            'title': '',
+            'content': '',
+            'url': url,
+            'cover_image': '',
+            'author': '',
+            'content_type': 'post'
+        }
+
+def parse_zhihu_url(url: str) -> dict:
+    """解析知乎URL"""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Referer': 'https://www.zhihu.com'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
+        response.raise_for_status()
+        
+        # 提取标题
+        title = ''
+        title_match = re.search(r'<title[^>]*>([^<]+)</title>', response.text, re.IGNORECASE)
+        if title_match:
+            title = title_match.group(1).strip()
+            # 移除知乎后缀
+            title = re.sub(r'\s*-\s*知乎$', '', title)
+        
+        # 提取描述
+        desc = ''
+        desc_match = re.search(r'<meta[^>]*name=["\']description["\'][^>]*content=["\']([^"\']*)["\']', response.text, re.IGNORECASE)
+        if desc_match:
+            desc = desc_match.group(1).strip()
+        
+        # 提取封面图
+        cover_image = ''
+        image_patterns = [
+            r'<meta[^>]*property=["\']og:image["\'][^>]*content=["\']([^"\']*)["\']',
+            r'<meta[^>]*property=["\']twitter:image["\'][^>]*content=["\']([^"\']*)["\']',
+        ]
+        for pattern in image_patterns:
+            if not cover_image:
+                image_match = re.search(pattern, response.text, re.IGNORECASE)
+                if image_match:
+                    cover_image = image_match.group(1)
+                    break
+        
+        # 提取作者
+        author = ''
+        author_patterns = [
+            r'<meta[^>]*property=["\']og:article:author["\'][^>]*content=["\']([^"\']*)["\']',
+            r'<meta[^>]*name=["\']author["\'][^>]*content=["\']([^"\']*)["\']',
+        ]
+        for pattern in author_patterns:
+            if not author:
+                author_match = re.search(pattern, response.text, re.IGNORECASE)
+                if author_match:
+                    author = author_match.group(1)
+                    break
+        
+        # 提取问题/文章ID
+        content_id = url.split('/')[-1]
+        content_id_match = re.search(r'/answer/(\d+)', url)
+        if content_id_match:
+            content_id = content_id_match.group(1)
+        else:
+            content_id_match = re.search(r'/question/(\d+)', url)
+            if content_id_match:
+                content_id = content_id_match.group(1)
+        
+        # 判断内容类型
+        content_type = 'article' if '/p/' in url else 'post'
+        
+        return {
+            'success': True,
+            'platform': 'zhihu',
+            'content_id': content_id,
+            'title': title,
+            'content': desc,
+            'url': url,
+            'cover_image': cover_image,
+            'author': author,
+            'content_type': content_type
+        }
+    except Exception as e:
+        # 即使解析失败，也返回基本平台信息
+        # 提取问题/文章ID
+        content_id = url.split('/')[-1]
+        content_id_match = re.search(r'/answer/(\d+)', url)
+        if content_id_match:
+            content_id = content_id_match.group(1)
+        else:
+            content_id_match = re.search(r'/question/(\d+)', url)
+            if content_id_match:
+                content_id = content_id_match.group(1)
+        
+        return {
+            'success': True,
+            'platform': 'zhihu',
+            'content_id': content_id,
+            'title': '',
+            'content': '',
+            'url': url,
+            'cover_image': '',
+            'author': '',
+            'content_type': 'post'
+        }
 
 def parse_url_content(url: str) -> dict:
     """解析URL内容，自动识别平台并提取信息"""
@@ -361,6 +522,11 @@ def parse_url_content(url: str) -> dict:
         
         elif 'weixin.qq.com' in url or 'mp.weixin.qq.com' in url:
             result = parse_wechat_url(url)
+            if result.get('success'):
+                return result
+        
+        elif 'zhihu.com' in url or 'zhuanlan.zhihu.com' in url:
+            result = parse_zhihu_url(url)
             if result.get('success'):
                 return result
         
@@ -394,6 +560,8 @@ def parse_url_content(url: str) -> dict:
             platform = 'bilibili'
         elif 'douyin.com' in url or 'v.douyin.com' in url:
             platform = 'douyin'
+        elif 'zhihu.com' in url or 'zhuanlan.zhihu.com' in url:
+            platform = 'zhihu'
         
         return {
             'platform': platform,

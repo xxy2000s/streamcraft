@@ -9,6 +9,7 @@ class PlatformEnum(str, enum.Enum):
     WECHAT = "wechat"
     BILIBILI = "bilibili"
     DOUYIN = "douyin"
+    ZHIHU = "zhihu"
     OTHER = "other"
 
 class ContentTypeEnum(str, enum.Enum):
@@ -38,7 +39,7 @@ class Collection(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    platform = Column(Enum(PlatformEnum), nullable=False)
+    platform = Column(Enum(PlatformEnum, values_callable=lambda obj: [e.value for e in obj]), nullable=False)
     content_id = Column(String(100), nullable=False)  # 平台原始ID
     title = Column(String(200), nullable=False)
     content = Column(Text)

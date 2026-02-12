@@ -98,6 +98,8 @@ const CollectionsPage = () => {
         return 'bg-green-500'
       case Platform.BILIBILI:
         return 'bg-blue-500'
+      case Platform.ZHIHU:
+        return 'bg-blue-600'
       default:
         return 'bg-gray-500'
     }
@@ -233,7 +235,13 @@ const CollectionsPage = () => {
         cover_image: parsed.cover_image,
         content_type: parsed.content_type as ContentType
       })
-      toast.success('链接解析成功')
+      
+      // 检查是否成功提取到内容
+      if (!parsed.title && !parsed.cover_image) {
+        toast.success('链接已识别，请手动填写标题和封面图')
+      } else {
+        toast.success('链接解析成功')
+      }
     } catch (error) {
       toast.error('链接解析失败，请手动填写')
     } finally {
@@ -461,8 +469,9 @@ const CollectionsPage = () => {
                   key={collection.id}
                   whileHover={{ y: -2 }}
                   className={`bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden ${
-                    viewMode === 'list' ? 'flex' : ''
+                    viewMode === 'list' ? 'flex' : 'flex flex-col'
                   } relative group ${selectedCollectionIds.has(collection.id) ? 'ring-2 ring-indigo-500' : ''}`}
+                  style={{ minHeight: viewMode === 'grid' ? '380px' : 'auto' }}
                 >
                   {/* 批量选择复选框 */}
                   {isBatchMode && (
@@ -518,7 +527,7 @@ const CollectionsPage = () => {
                   </div>
 
                   {collection.cover_image && viewMode === 'grid' && (
-                    <div className={`relative h-48 overflow-hidden cursor-pointer bg-gray-100 ${isBatchMode ? '' : 'clickable'}`} onClick={() => !isBatchMode && navigate(`/collections/${collection.id}`)}>
+                    <div className={`relative h-48 overflow-hidden cursor-pointer bg-gray-100 ${isBatchMode ? '' : 'clickable'}`} onClick={() => !isBatchMode && collection.url && window.open(collection.url, '_blank')}>
                       <img
                         src={getImageUrl(collection.cover_image)}
                         alt={collection.title}
@@ -530,7 +539,7 @@ const CollectionsPage = () => {
                     </div>
                   )}
 
-                  <div className={viewMode === 'grid' ? "p-6" : "p-6 flex-1 cursor-pointer"} onClick={() => !isBatchMode && navigate(`/collections/${collection.id}`)}>
+                  <div className={viewMode === 'grid' ? "p-6 flex-1" : "p-6 flex-1 cursor-pointer"} onClick={() => !isBatchMode && collection.url && window.open(collection.url, '_blank')}>
                     <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">{collection.title}</h3>
                     {collection.author && (
                       <p className="text-sm text-gray-600 mb-3">作者: {collection.author}</p>
@@ -656,6 +665,7 @@ const CollectionsPage = () => {
                         <option value={Platform.WECHAT}>微信</option>
                         <option value={Platform.BILIBILI}>B站</option>
                         <option value={Platform.DOUYIN}>抖音</option>
+                        <option value={Platform.ZHIHU}>知乎</option>
                         <option value={Platform.OTHER}>其他</option>
                       </select>
                     </div>

@@ -57,6 +57,7 @@ export enum Platform {
   WECHAT = 'wechat',
   BILIBILI = 'bilibili',
   DOUYIN = 'douyin',
+  ZHIHU = 'zhihu',
   OTHER = 'other',
 }
 
