@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 from urllib.parse import urlparse
 from services.scraper import ScraperFactory
 from services.ai_classifier import ai_classifier
-from models import Collection as CollectionModel, User as UserModel, BotMessage as BotMessageModel
+from models import Collection as CollectionModel, User as UserModel, BotMessage as BotMessageModel, BotMessageTrash as BotMessageTrashModel
 from schemas import CollectionCreate, SuccessResponse
 from database import get_db
 from routers.auth import get_current_user
@@ -407,6 +407,56 @@ async def handle_bot_message(
             message="处理消息时发生错误"
         )
 
+@router.get("/bot/messages")
+async def get_bot_messages(
+    db: Session = Depends(get_db),
+    skip: int = Query(0, ge=0, description="跳过的记录数"),
+    limit: int = Query(50, ge=1, le=100, description="返回的记录数"),
+    source: Optional[str] = Query(None, description="按来源筛选")
+):
+    """
+    获取机器人接收到的消息列表
+    
+    响应：
+    {
+        "total": 10,
+        "messages": [
+            {
+                "id": 1,
+                "message": "原始消息内容",
+                "source": "feishu",
+                "parsed_urls": [...],
+                "total_links": 2,
+                "processed": true,
+                "received_at": "2024-01-01T00:00:00Z"
+            }
+        ]
+    }
+    """
+    query = db.query(BotMessageModel)
+    
+    if source:
+        query = query.filter(BotMessageModel.source == source)
+    
+    total = query.count()
+    messages = query.order_by(BotMessageModel.received_at.desc()).offset(skip).limit(limit).all()
+    
+    return {
+        "total": total,
+        "messages": [
+            {
+                "id": msg.id,
+                "message": msg.message,
+                "source": msg.source,
+                "parsed_urls": json.loads(msg.parsed_urls) if msg.parsed_urls else [],
+                "total_links": msg.total_links,
+                "processed": msg.processed,
+                "received_at": to_beijing_time(msg.received_at).isoformat()
+            }
+            for msg in messages
+        ]
+    }
+
 @router.get("/bot/status")
 async def get_bot_status():
     """获取机器人状态"""
@@ -423,13 +473,385 @@ async def get_bot_status():
         }
     }
 
-@router.get("/bot/messages")
-async def get_bot_messages(
+@router.delete("/bot/messages/{message_id}")
+async def delete_bot_message(
+    message_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+    current_user: Optional[UserModel] = Depends(get_current_user)
+):
+    """删除单个机器人消息（移动到回收站）"""
+    # 验证token（支持BOT_TOKEN或用户JWT）
+    is_bot_token = verify_bot_token(authorization)
+    is_user = current_user is not None
+    
+    if not is_bot_token and not is_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing authentication"
+        )
+    
+    try:
+        message = db.query(BotMessageModel).filter(BotMessageModel.id == message_id).first()
+        if not message:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Message not found"
+            )
+        
+        # 移动到回收站
+        expires_at = datetime.utcnow() + timedelta(days=7)
+        trash_message = BotMessageTrashModel(
+            original_id=message.id,
+            message=message.message,
+            source=message.source,
+            parsed_urls=message.parsed_urls,
+            total_links=message.total_links,
+            processed=message.processed,
+            received_at=message.received_at,
+            deleted_at=datetime.utcnow(),
+            deleted_by=current_user.id if current_user else None,
+            expires_at=expires_at
+        )
+        
+        db.add(trash_message)
+        db.delete(message)
+        db.commit()
+        
+        logger.info(f"Bot message moved to trash: id={message_id}, expires_at={expires_at}")
+        return {"success": True, "message": "消息已移至回收站"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete message {message_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="删除消息失败"
+        )
+
+@router.post("/bot/messages/batch-delete")
+async def batch_delete_bot_messages(
+    message_ids: List[int],
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+    current_user: Optional[UserModel] = Depends(get_current_user)
+):
+    """批量删除机器人消息（移动到回收站）"""
+    # 验证token
+    is_bot_token = verify_bot_token(authorization)
+    is_user = current_user is not None
+    
+    if not is_bot_token and not is_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing authentication"
+        )
+    
+    try:
+        if not message_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="请提供要删除的消息ID列表"
+            )
+        
+        # 批量移动到回收站
+        messages = db.query(BotMessageModel).filter(
+            BotMessageModel.id.in_(message_ids)
+        ).all()
+        
+        deleted_count = 0
+        expires_at = datetime.utcnow() + timedelta(days=7)
+        
+        for message in messages:
+            trash_message = BotMessageTrashModel(
+                original_id=message.id,
+                message=message.message,
+                source=message.source,
+                parsed_urls=message.parsed_urls,
+                total_links=message.total_links,
+                processed=message.processed,
+                received_at=message.received_at,
+                deleted_at=datetime.utcnow(),
+                deleted_by=current_user.id if current_user else None,
+                expires_at=expires_at
+            )
+            db.add(trash_message)
+            db.delete(message)
+            deleted_count += 1
+        
+        db.commit()
+        
+        logger.info(f"Batch moved {deleted_count} messages to trash")
+        return {
+            "success": True,
+            "message": f"成功将{deleted_count}条消息移至回收站",
+            "deleted_count": deleted_count
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to batch delete messages: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="批量删除失败"
+        )
+
+@router.delete("/bot/messages")
+async def clear_all_bot_messages(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+    current_user: Optional[UserModel] = Depends(get_current_user)
+):
+    """清空所有机器人消息（移动到回收站）"""
+    # 验证token
+    is_bot_token = verify_bot_token(authorization)
+    is_user = current_user is not None
+    
+    if not is_bot_token and not is_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing authentication"
+        )
+    
+    try:
+        messages = db.query(BotMessageModel).all()
+        deleted_count = len(messages)
+        expires_at = datetime.utcnow() + timedelta(days=7)
+        
+        for message in messages:
+            trash_message = BotMessageTrashModel(
+                original_id=message.id,
+                message=message.message,
+                source=message.source,
+                parsed_urls=message.parsed_urls,
+                total_links=message.total_links,
+                processed=message.processed,
+                received_at=message.received_at,
+                deleted_at=datetime.utcnow(),
+                deleted_by=current_user.id if current_user else None,
+                expires_at=expires_at
+            )
+            db.add(trash_message)
+            db.delete(message)
+        
+        db.commit()
+        
+        logger.info(f"Cleared all bot messages: {deleted_count} moved to trash")
+        return {
+            "success": True,
+            "message": f"成功将{deleted_count}条消息移至回收站",
+            "deleted_count": deleted_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to clear all messages: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="清空消息失败"
+        )
+
+@router.get("/bot/trash")
+async def get_trash_messages(
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0, description="跳过的记录数"),
     limit: int = Query(50, ge=1, le=100, description="返回的记录数"),
-    source: Optional[str] = Query(None, description="按来源筛选")
+    current_user: Optional[UserModel] = Depends(get_current_user)
 ):
+    """获取回收站消息列表"""
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+    
+    try:
+        # 清理过期消息
+        db.query(BotMessageTrashModel).filter(
+            BotMessageTrashModel.expires_at < datetime.utcnow()
+        ).delete(synchronize_session=False)
+        db.commit()
+        
+        query = db.query(BotMessageTrashModel)
+        total = query.count()
+        trash_messages = query.order_by(BotMessageTrashModel.deleted_at.desc()).offset(skip).limit(limit).all()
+        
+        return {
+            "total": total,
+            "messages": [
+                {
+                    "id": msg.id,
+                    "original_id": msg.original_id,
+                    "message": msg.message,
+                    "source": msg.source,
+                    "parsed_urls": json.loads(msg.parsed_urls) if msg.parsed_urls else [],
+                    "total_links": msg.total_links,
+                    "processed": msg.processed,
+                    "received_at": to_beijing_time(msg.received_at).isoformat(),
+                    "deleted_at": to_beijing_time(msg.deleted_at).isoformat(),
+                    "expires_at": to_beijing_time(msg.expires_at).isoformat(),
+                    "expires_in_days": max(0, (msg.expires_at - datetime.utcnow()).days)
+                }
+                for msg in trash_messages
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Failed to get trash messages: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="获取回收站消息失败"
+        )
+
+@router.post("/bot/trash/{trash_id}/restore")
+async def restore_message(
+    trash_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[UserModel] = Depends(get_current_user)
+):
+    """从回收站恢复消息"""
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+    
+    try:
+        trash_message = db.query(BotMessageTrashModel).filter(
+            BotMessageTrashModel.id == trash_id
+        ).first()
+        
+        if not trash_message:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="回收站消息不存在"
+            )
+        
+        # 检查是否已过期
+        if trash_message.expires_at < datetime.utcnow():
+            db.delete(trash_message)
+            db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="消息已过期，无法恢复"
+            )
+        
+        # 检查原始ID是否已存在
+        existing = db.query(BotMessageModel).filter(
+            BotMessageModel.id == trash_message.original_id
+        ).first()
+        
+        if existing:
+            # 如果已存在，使用新的ID
+            restored_message = BotMessageModel(
+                message=trash_message.message,
+                source=trash_message.source,
+                parsed_urls=trash_message.parsed_urls,
+                total_links=trash_message.total_links,
+                processed=trash_message.processed,
+                received_at=trash_message.received_at
+            )
+        else:
+            # 如果不存在，恢复原始ID
+            restored_message = BotMessageModel(
+                id=trash_message.original_id,
+                message=trash_message.message,
+                source=trash_message.source,
+                parsed_urls=trash_message.parsed_urls,
+                total_links=trash_message.total_links,
+                processed=trash_message.processed,
+                received_at=trash_message.received_at
+            )
+        
+        db.add(restored_message)
+        db.delete(trash_message)
+        db.commit()
+        
+        logger.info(f"Restored message from trash: trash_id={trash_id}")
+        return {"success": True, "message": "消息恢复成功"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to restore message {trash_id}: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="恢复消息失败"
+        )
+
+@router.delete("/bot/trash/{trash_id}")
+async def permanent_delete_message(
+    trash_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[UserModel] = Depends(get_current_user)
+):
+    """永久删除回收站消息"""
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+    
+    try:
+        trash_message = db.query(BotMessageTrashModel).filter(
+            BotMessageTrashModel.id == trash_id
+        ).first()
+        
+        if not trash_message:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="回收站消息不存在"
+            )
+        
+        db.delete(trash_message)
+        db.commit()
+        
+        logger.info(f"Permanently deleted message from trash: trash_id={trash_id}")
+        return {"success": True, "message": "消息已永久删除"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to permanently delete message {trash_id}: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="永久删除失败"
+        )
+
+@router.delete("/bot/trash")
+async def clear_all_trash(
+    db: Session = Depends(get_db),
+    current_user: Optional[UserModel] = Depends(get_current_user)
+):
+    """清空回收站"""
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+    
+    try:
+        deleted_count = db.query(BotMessageTrashModel).delete()
+        db.commit()
+        
+        logger.info(f"Cleared all trash: {deleted_count} messages")
+        return {
+            "success": True,
+            "message": f"已清空回收站，共{deleted_count}条消息",
+            "deleted_count": deleted_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to clear trash: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="清空回收站失败"
+        )
     """
     获取机器人接收到的消息列表
     

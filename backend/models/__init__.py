@@ -112,3 +112,18 @@ class BotMessage(Base):
     total_links = Column(Integer, default=0)  # 解析出的链接数量
     processed = Column(Boolean, default=False)  # 是否已处理
     received_at = Column(DateTime, default=datetime.utcnow)
+
+class BotMessageTrash(Base):
+    __tablename__ = "bot_messages_trash"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    original_id = Column(Integer, nullable=False)  # 原始消息ID
+    message = Column(Text, nullable=False)  # 原始消息内容
+    source = Column(String(50), default="manual")  # 消息来源
+    parsed_urls = Column(Text)  # JSON格式存储解析出的URL信息
+    total_links = Column(Integer, default=0)  # 解析出的链接数量
+    processed = Column(Boolean, default=False)  # 是否已处理
+    received_at = Column(DateTime, nullable=False)  # 原始接收时间
+    deleted_at = Column(DateTime, default=datetime.utcnow)  # 删除时间
+    deleted_by = Column(Integer, ForeignKey("users.id"))  # 删除者ID
+    expires_at = Column(DateTime, nullable=False)  # 过期时间（7天后）
