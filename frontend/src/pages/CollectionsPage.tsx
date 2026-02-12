@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Search, Heart, Grid, List, FolderPlus, MoreHorizontal, Plus, X, Link as LinkIcon, RefreshCw } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Search, Heart, Grid, List, FolderPlus, MoreHorizontal, Plus, X, Link as LinkIcon, RefreshCw, ArrowLeft, Trash2 } from 'lucide-react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { CollectionService } from '@/services/collectionService'
 import { CategoryService } from '@/services/categoryService'
@@ -9,7 +9,10 @@ import { Collection, Platform, Category, ContentType } from '@/types'
 
 const CollectionsPage = () => {
   const navigate = useNavigate()
+  const { id } = useParams()
+  const isDetailView = !!id
   const [collections, setCollections] = useState<Collection[]>([])
+  const [currentCollection, setCurrentCollection] = useState<Collection | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -21,6 +24,8 @@ const CollectionsPage = () => {
   const [collectionToCategorize, setCollectionToCategorize] = useState<Collection | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [parsingUrl, setParsingUrl] = useState(false)
+  const [isBatchMode, setIsBatchMode] = useState(false)
+  const [selectedCollectionIds, setSelectedCollectionIds] = useState<Set<number>>(new Set())
   const [formData, setFormData] = useState({
     platform: Platform.OTHER,
     content_id: '',
@@ -35,9 +40,13 @@ const CollectionsPage = () => {
   })
 
   useEffect(() => {
-    loadCollections()
+    if (isDetailView && id) {
+      loadCollectionDetail(Number(id))
+    } else {
+      loadCollections()
+    }
     loadCategories()
-  }, [])
+  }, [id, isDetailView])
 
   useEffect(() => {
     loadCollections()
@@ -54,6 +63,19 @@ const CollectionsPage = () => {
       setCollections(data)
     } catch (error) {
       toast.error('加载收藏失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadCollectionDetail = async (collectionId: number) => {
+    try {
+      setLoading(true)
+      const data = await CollectionService.getCollection(collectionId)
+      setCurrentCollection(data)
+    } catch (error) {
+      toast.error('加载收藏详情失败')
+      navigate('/collections')
     } finally {
       setLoading(false)
     }
@@ -122,11 +144,58 @@ const CollectionsPage = () => {
     }
   }
 
+  const handleDeleteCollection = async (collectionId: number) => {
+    if (!confirm('确定要删除这个收藏吗？')) return
+    try {
+      await CollectionService.deleteCollection(collectionId)
+      toast.success('删除成功')
+      loadCollections()
+    } catch (error) {
+      toast.error('删除失败')
+    }
+  }
+
+  const toggleCollectionSelection = (collectionId: number) => {
+    const newSelection = new Set(selectedCollectionIds)
+    if (newSelection.has(collectionId)) {
+      newSelection.delete(collectionId)
+    } else {
+      newSelection.add(collectionId)
+    }
+    setSelectedCollectionIds(newSelection)
+  }
+
+  const handleBatchDelete = async () => {
+    if (selectedCollectionIds.size === 0) {
+      toast.error('请先选择要删除的收藏')
+      return
+    }
+    if (!confirm(`确定要删除选中的 ${selectedCollectionIds.size} 个收藏吗？`)) return
+    try {
+      await Promise.all(Array.from(selectedCollectionIds).map(id => CollectionService.deleteCollection(id)))
+      toast.success('批量删除成功')
+      setSelectedCollectionIds(new Set())
+      setIsBatchMode(false)
+      loadCollections()
+    } catch (error) {
+      toast.error('批量删除失败')
+    }
+  }
+
   const getCategoryForCollection = (collection: Collection) => {
     if (collection.category_id) {
       return categories.find(c => c.id === collection.category_id)
     }
     return null
+  }
+
+  const getImageUrl = (url: string | undefined) => {
+    if (!url) return ''
+    // 如果是外部图片URL，使用代理
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return `/proxy-image/?url=${url}`
+    }
+    return url
   }
 
   const handleAddCollection = () => {
@@ -198,13 +267,76 @@ const CollectionsPage = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">我的收藏</h1>
-          <p className="text-gray-600">管理和浏览您收藏的所有内容</p>
-        </div>
+        {/* 详情视图 */}
+        {isDetailView && currentCollection ? (
+          <div>
+            <button
+              onClick={() => navigate('/collections')}
+              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              返回列表
+            </button>
+            <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+              {currentCollection.cover_image ? (
+                <div className="relative w-full h-64 bg-gray-100">
+                  <img
+                    src={getImageUrl(currentCollection.cover_image)}
+                    alt={currentCollection.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-full h-64 bg-gray-200 flex items-center justify-center">
+                  <span className="text-gray-400">无封面图</span>
+                </div>
+              )}
+              <div className="p-8">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${getPlatformColor(currentCollection.platform)} text-white`}>
+                    {currentCollection.platform}
+                  </span>
+                  <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                    {currentCollection.content_type}
+                  </span>
+                </div>
+                <h1 className="text-3xl font-bold text-gray-900 mb-4">{currentCollection.title}</h1>
+                {currentCollection.author && (
+                  <p className="text-gray-600 mb-4">作者: {currentCollection.author}</p>
+                )}
+                {currentCollection.content && (
+                  <div className="prose max-w-none mb-6">
+                    <p className="text-gray-700 whitespace-pre-wrap">{currentCollection.content}</p>
+                  </div>
+                )}
+                {currentCollection.url && (
+                  <a
+                    href={currentCollection.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                  >
+                    查看原文
+                  </a>
+                )}
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <p className="text-sm text-gray-500">
+                    收藏时间: {new Date(currentCollection.collected_at).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* 列表视图 */}
+            <div className="mb-8">
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">我的收藏</h1>
+              <p className="text-gray-600">管理和浏览您收藏的所有内容</p>
+            </div>
 
-        {/* 搜索和筛选栏 */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
+            {/* 搜索和筛选栏 */}
+            <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
           <div className="flex flex-col lg:flex-row gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -218,6 +350,38 @@ const CollectionsPage = () => {
             </div>
 
             <div className="flex flex-wrap gap-2">
+              {isBatchMode && (
+                <div className="flex items-center gap-2 mr-4">
+                  <span className="text-sm text-gray-600">已选择 {selectedCollectionIds.size} 项</span>
+                  <button
+                    onClick={handleBatchDelete}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    批量删除
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsBatchMode(false)
+                      setSelectedCollectionIds(new Set())
+                    }}
+                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    取消
+                  </button>
+                </div>
+              )}
+
+              <button
+                onClick={() => {
+                  setIsBatchMode(!isBatchMode)
+                  setSelectedCollectionIds(new Set())
+                }}
+                className={`px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors ${isBatchMode ? 'bg-indigo-100 text-indigo-600' : ''}`}
+              >
+                {isBatchMode ? '退出批量' : '批量管理'}
+              </button>
+
               <select
                 value={selectedCategoryId || 'all'}
                 onChange={(e) => setSelectedCategoryId(e.target.value === 'all' ? null : Number(e.target.value))}
@@ -238,6 +402,7 @@ const CollectionsPage = () => {
                 <option value="xiaohongshu">小红书</option>
                 <option value="wechat">微信</option>
                 <option value="bilibili">B站</option>
+                <option value="douyin">抖音</option>
               </select>
 
               <div className="flex border border-gray-300 rounded-lg overflow-hidden">
@@ -297,8 +462,20 @@ const CollectionsPage = () => {
                   whileHover={{ y: -2 }}
                   className={`bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden ${
                     viewMode === 'list' ? 'flex' : ''
-                  } relative group`}
+                  } relative group ${selectedCollectionIds.has(collection.id) ? 'ring-2 ring-indigo-500' : ''}`}
                 >
+                  {/* 批量选择复选框 */}
+                  {isBatchMode && (
+                    <div className="absolute top-3 left-3 z-20">
+                      <input
+                        type="checkbox"
+                        checked={selectedCollectionIds.has(collection.id)}
+                        onChange={() => toggleCollectionSelection(collection.id)}
+                        className="w-5 h-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                      />
+                    </div>
+                  )}
+
                   {/* 更多操作菜单 */}
                   <div className="absolute top-3 right-3 z-10">
                     <div className="relative">
@@ -324,25 +501,36 @@ const CollectionsPage = () => {
                             <FolderPlus className="w-4 h-4" />
                             设置分类
                           </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteCollection(collection.id)
+                              setActiveDropdown(null)
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            删除
+                          </button>
                         </div>
                       )}
                     </div>
                   </div>
 
                   {collection.cover_image && viewMode === 'grid' && (
-                    <div className="relative h-48 overflow-hidden cursor-pointer" onClick={() => navigate(`/collections/${collection.id}`)}>
+                    <div className={`relative h-48 overflow-hidden cursor-pointer bg-gray-100 ${isBatchMode ? '' : 'clickable'}`} onClick={() => !isBatchMode && navigate(`/collections/${collection.id}`)}>
                       <img
-                        src={collection.cover_image}
+                        src={getImageUrl(collection.cover_image)}
                         alt={collection.title}
                         className="w-full h-full object-cover"
                       />
-                      <div className={`absolute top-3 left-3 ${getPlatformColor(collection.platform)} text-white text-xs px-2 py-1 rounded-full`}>
+                      <div className={`absolute top-3 ${isBatchMode ? 'left-12' : 'left-3'} ${getPlatformColor(collection.platform)} text-white text-xs px-2 py-1 rounded-full`}>
                         {collection.platform}
                       </div>
                     </div>
                   )}
 
-                  <div className={viewMode === 'grid' ? "p-6" : "p-6 flex-1 cursor-pointer"} onClick={() => navigate(`/collections/${collection.id}`)}>
+                  <div className={viewMode === 'grid' ? "p-6" : "p-6 flex-1 cursor-pointer"} onClick={() => !isBatchMode && navigate(`/collections/${collection.id}`)}>
                     <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">{collection.title}</h3>
                     {collection.author && (
                       <p className="text-sm text-gray-600 mb-3">作者: {collection.author}</p>
@@ -467,6 +655,7 @@ const CollectionsPage = () => {
                         <option value={Platform.XIAOHONGSHU}>小红书</option>
                         <option value={Platform.WECHAT}>微信</option>
                         <option value={Platform.BILIBILI}>B站</option>
+                        <option value={Platform.DOUYIN}>抖音</option>
                         <option value={Platform.OTHER}>其他</option>
                       </select>
                     </div>
@@ -615,6 +804,8 @@ const CollectionsPage = () => {
               </form>
             </motion.div>
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

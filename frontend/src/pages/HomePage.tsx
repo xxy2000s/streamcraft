@@ -13,6 +13,12 @@ const HomePage = () => {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
 
+  // 图片代理URL
+  const getProxyImageUrl = (url: string) => {
+    if (!url) return ''
+    return `/proxy-image/?url=${url}`
+  }
+
   useEffect(() => {
     loadCollections()
   }, [])
@@ -184,7 +190,7 @@ const HomePage = () => {
                     {collection.cover_image && (
                       <div className="relative h-48 overflow-hidden">
                         <img
-                          src={collection.cover_image}
+                          src={getProxyImageUrl(collection.cover_image)}
                           alt={collection.title}
                           className="w-full h-full object-cover"
                         />

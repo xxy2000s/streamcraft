@@ -8,6 +8,7 @@ class PlatformEnum(str, enum.Enum):
     XIAOHONGSHU = "xiaohongshu"
     WECHAT = "wechat"
     BILIBILI = "bilibili"
+    DOUYIN = "douyin"
     OTHER = "other"
 
 class ContentTypeEnum(str, enum.Enum):

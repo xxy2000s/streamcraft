@@ -56,7 +56,8 @@ export enum Platform {
   XIAOHONGSHU = 'xiaohongshu',
   WECHAT = 'wechat',
   BILIBILI = 'bilibili',
-  OTHER = 'other'
+  DOUYIN = 'douyin',
+  OTHER = 'other',
 }
 
 export enum ContentType {
