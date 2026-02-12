@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 import re
 import json
+from datetime import datetime, timezone, timedelta
 from urllib.parse import urlparse
 from services.scraper import ScraperFactory
 from services.ai_classifier import ai_classifier
@@ -13,6 +14,15 @@ from database import get_db
 from routers.auth import get_current_user
 from config.settings import settings
 from loguru import logger
+
+# 设置时区（北京时间 UTC+8）
+BEIJING_TZ = timezone(timedelta(hours=8))
+
+def to_beijing_time(dt: datetime) -> datetime:
+    """将UTC时间转换为北京时间"""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(BEIJING_TZ)
 
 router = APIRouter()
 
@@ -222,7 +232,7 @@ def verify_bot_token(authorization: Optional[str] = Header(None)) -> bool:
 async def parse_bot_message(
     request: BotMessageRequest,
     authorization: Optional[str] = Header(None),
-    source: Optional[str] = Header(None),  # 消息来源
+    x_message_source: Optional[str] = Header(None, alias="X-Message-Source"),  # 消息来源
     db: Session = Depends(get_db)
 ):
     """
@@ -291,7 +301,7 @@ async def parse_bot_message(
         # 保存消息到数据库
         bot_message = BotMessageModel(
             message=request.message,
-            source=source or "unknown",
+            source=x_message_source or "manual",
             parsed_urls=json.dumps(link_infos, ensure_ascii=False),
             total_links=len(urls),
             processed=True
@@ -457,7 +467,7 @@ async def get_bot_messages(
                 "parsed_urls": json.loads(msg.parsed_urls) if msg.parsed_urls else [],
                 "total_links": msg.total_links,
                 "processed": msg.processed,
-                "received_at": msg.received_at.isoformat()
+                "received_at": to_beijing_time(msg.received_at).isoformat()
             }
             for msg in messages
         ]

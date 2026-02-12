@@ -107,7 +107,7 @@ class BotMessage(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     message = Column(Text, nullable=False)  # 原始消息内容
-    source = Column(String(50), default="unknown")  # 消息来源（飞书、钉钉等）
+    source = Column(String(50), default="manual")  # 消息来源（飞书、钉钉等）
     parsed_urls = Column(Text)  # JSON格式存储解析出的URL信息
     total_links = Column(Integer, default=0)  # 解析出的链接数量
     processed = Column(Boolean, default=False)  # 是否已处理

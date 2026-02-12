@@ -109,6 +109,38 @@ const BotPage: React.FC = () => {
     });
   };
 
+  const getSourceName = (source: string) => {
+    const names: Record<string, string> = {
+      manual: '手动',
+      lark: '飞书',
+      feishu: '飞书',
+      dingtalk: '钉钉',
+      web: '网页',
+      api: 'API',
+      webhook: 'Webhook',
+      slack: 'Slack',
+      telegram: 'Telegram',
+      unknown: '未知'
+    };
+    return names[source] || source;
+  };
+
+  const getSourceColor = (source: string) => {
+    const colors: Record<string, string> = {
+      manual: 'bg-slate-100 text-slate-700',
+      lark: 'bg-blue-100 text-blue-700',
+      feishu: 'bg-blue-100 text-blue-700',
+      dingtalk: 'bg-red-100 text-red-700',
+      web: 'bg-purple-100 text-purple-700',
+      api: 'bg-green-100 text-green-700',
+      webhook: 'bg-orange-100 text-orange-700',
+      slack: 'bg-pink-100 text-pink-700',
+      telegram: 'bg-cyan-100 text-cyan-700',
+      unknown: 'bg-gray-100 text-gray-700'
+    };
+    return colors[source] || 'bg-gray-100 text-gray-700';
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
       <div className="max-w-7xl mx-auto">
@@ -186,8 +218,8 @@ const BotPage: React.FC = () => {
                   {/* 消息头部 */}
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-3">
-                      <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium">
-                        {msg.source}
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${getSourceColor(msg.source)}`}>
+                        {getSourceName(msg.source)}
                       </span>
                       <span className="text-sm text-slate-500">
                         {formatTime(msg.received_at)}
