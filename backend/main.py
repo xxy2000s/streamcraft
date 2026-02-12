@@ -9,7 +9,7 @@ import logging
 from loguru import logger
 
 # 导入路由
-from routers import auth, collections, categories, tags, hot_content, users
+from routers import auth, collections, categories, tags, hot_content, users, bot
 
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
@@ -42,6 +42,7 @@ app.include_router(collections.router, prefix="/api/v1", tags=["收藏"])
 app.include_router(categories.router, prefix="/api/v1", tags=["分类"])
 app.include_router(tags.router, prefix="/api/v1", tags=["标签"])
 app.include_router(hot_content.router, prefix="/api/v1", tags=["热门内容"])
+app.include_router(bot.router, prefix="/api/v1", tags=["机器人"])
 
 @app.get("/health")
 async def health_check():

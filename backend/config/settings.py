@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     ENABLE_MONITORING: bool = True
     LOG_LEVEL: str = "INFO"
     
+    # 机器人配置
+    BOT_TOKEN: Optional[str] = None  # 外部机器人调用验证token
+    
     class Config:
         env_file = ".env"
 

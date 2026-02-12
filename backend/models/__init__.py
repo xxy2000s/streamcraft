@@ -101,3 +101,14 @@ class HotContent(Base):
     hot_score = Column(Integer, default=0)  # 热度分数
     crawled_at = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class BotMessage(Base):
+    __tablename__ = "bot_messages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    message = Column(Text, nullable=False)  # 原始消息内容
+    source = Column(String(50), default="unknown")  # 消息来源（飞书、钉钉等）
+    parsed_urls = Column(Text)  # JSON格式存储解析出的URL信息
+    total_links = Column(Integer, default=0)  # 解析出的链接数量
+    processed = Column(Boolean, default=False)  # 是否已处理
+    received_at = Column(DateTime, default=datetime.utcnow)

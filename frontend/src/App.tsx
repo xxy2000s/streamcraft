@@ -8,6 +8,7 @@ import CategoriesPage from '@/pages/CategoriesPage'
 import LoginPage from '@/pages/LoginPage'
 import RegisterPage from '@/pages/RegisterPage'
 import ProfilePage from '@/pages/ProfilePage'
+import BotPage from '@/pages/BotPage'
 
 const NotFoundPage = () => (
   <div className="min-h-screen flex items-center justify-center">
@@ -39,6 +40,7 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/bot" element={<BotPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Layout>
